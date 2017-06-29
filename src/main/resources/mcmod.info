@@ -1,0 +1,16 @@
+[
+{
+  "modid": "chest_lock",
+  "name": "Chest Lock",
+  "description": "Protect your chest from intruders!",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["Cameron Alberts"],
+  "credits": "Thanks, Cole.",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]
