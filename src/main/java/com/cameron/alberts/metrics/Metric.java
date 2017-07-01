@@ -1,19 +1,21 @@
 package com.cameron.alberts.metrics;
 
-import au.com.bytecode.opencsv.CSVWriter;
-import lombok.Data;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
 
-@Data
 public class Metric implements AutoCloseable {
-    private static CSVWriter writer;
+    private static final Gson GSON = new GsonBuilder().create();
+
+    private static PrintWriter printWriter;
 
     static {
         try {
-            writer = new CSVWriter(new FileWriter(new File("metrics.csv"), true));
+            printWriter = new PrintWriter(new FileWriter(new File("metrics.json"), true));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -21,17 +23,22 @@ public class Metric implements AutoCloseable {
 
     private String metricName;
     private double metricValue;
+    private String metricType;
+    private String unit;
+    private String version;
 
-    public static Metric getMetric() {
-        return new Metric();
+    Metric(final String version, final String metricType) {
+        this.version = version;
+        this.metricType = metricType;
     }
 
-    public String[] toArray() {
-        String[] array = new String[2];
-        array[0] = metricName;
-        array[1] = String.valueOf(metricValue);
+    void setMetricName(final String metricName) {
+        this.metricName = metricName;
+    }
 
-        return array;
+    void setMetricValue(final double metricValue, final String unit) {
+        this.metricValue = metricValue;
+        this.unit = unit;
     }
 
     @Override
@@ -40,11 +47,7 @@ public class Metric implements AutoCloseable {
     }
 
     private static void writeMetric(final Metric metric) {
-        writer.writeNext(metric.toArray());
-        try {
-            writer.flush();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        printWriter.println(GSON.toJson(metric));
+        printWriter.flush();
     }
 }

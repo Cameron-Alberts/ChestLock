@@ -11,7 +11,7 @@ public class ClientProxy extends CommonProxy {
 
     @Override
     public void init(FMLInitializationEvent event) {
-        ChestLockMod.RESOURCE_LOADER.registerRenders();
+        ChestLockMod.resourceLoader.registerRenders();
     }
 
     @Override

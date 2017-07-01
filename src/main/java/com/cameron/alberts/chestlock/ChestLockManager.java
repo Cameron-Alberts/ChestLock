@@ -1,29 +1,33 @@
 package com.cameron.alberts.chestlock;
 
+import com.cameron.alberts.metrics.TimerMetric;
 import com.google.common.collect.Maps;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+import lombok.Value;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.world.World;
+import net.minecraft.world.WorldSavedData;
+import net.minecraft.world.storage.MapStorage;
 
 import javax.annotation.Nullable;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
-public class ChestLockManager {
-    private static final Object SINGLETON_CREATION_LOCK = new Object();
-    private static final Object REGISTER_LOCK = new Object();
+public class ChestLockManager extends WorldSavedData {
+    private static final String CHEST_LOCK_MANAGER_SAVE_KEY = ChestLockMod.MOD_ID + "_ChestLockManager";
+    private static final String CHEST_PERMISSIONS_SAVE_KEY = CHEST_LOCK_MANAGER_SAVE_KEY + "_ChestPermissions";
+    private static final String CHEST_OWNERS_SAVE_KEY = CHEST_LOCK_MANAGER_SAVE_KEY + "_ChestOwners";
+    private static final Gson GSON = new GsonBuilder().enableComplexMapKeySerialization().create();
 
-    private static ChestLockManager manager;
-
-    private final Map<ChestBlock, Map<String, ChestPermissions>> chestPermissions;
-    private final Map<ChestBlock, String> chestOwners;
-
-    public static ChestLockManager singleton() {
-        synchronized (SINGLETON_CREATION_LOCK) {
-            if (manager == null) {
-                manager = new ChestLockManager();
-            }
-        }
-
-        return manager;
-    }
+    private final Object REGISTER_LOCK = new Object();
+    private Map<ChestBlock, Map<String, ChestPermissions>> chestPermissions;
+    private Map<ChestBlock, String> chestOwners;
 
     /**
      * To prevent possible race conditions there is a synchronized block. This method is intended to register
@@ -66,6 +70,7 @@ public class ChestLockManager {
 
                     // Must return to prevent registering userName as an additional root
                     // on this chestBlock
+                    setDirty(true);
                     return ChestLockManagerResult.SUCCESSFULLY_REGISTERED_CHEST;
                 }
 
@@ -79,6 +84,7 @@ public class ChestLockManager {
             register(userName, chestBlock);
         }
 
+        setDirty(true);
         return ChestLockManagerResult.SUCCESSFULLY_REGISTERED_CHEST;
     }
 
@@ -128,6 +134,56 @@ public class ChestLockManager {
      */
     public boolean contains(final ChestBlock chestBlock) {
         return chestPermissions.containsKey(chestBlock);
+    }
+
+    @Override
+    public void readFromNBT(final NBTTagCompound compound) {
+        try (TimerMetric metric = TimerMetric.create("readFromNBT")) {
+            List<ChestBlockWithPermissionsMap> chestPermissionsEntrySet =
+                    GSON.fromJson(compound.getString(CHEST_PERMISSIONS_SAVE_KEY),
+                            new TypeToken<List<ChestBlockWithPermissionsMap>>() {}.getType());
+            Map<ChestBlock, Map<String, ChestPermissions>> localChestPermissions =
+                    new ConcurrentHashMap<>(chestPermissionsEntrySet.size());
+
+            // chestPermissions is stored in NBT as a json representing its entry set, this is because this class
+            // takes advantage of references to Map<String, ChestPermissions>. If there is a double chest each
+            // ChestBlock in the double chest points to the same Map<String, ChestPermissions> reference, so this
+            // guarantees that they point to the same reference.
+            for (ChestBlockWithPermissionsMap entry : chestPermissionsEntrySet) {
+                List<ChestBlock> possibleDoubleChestBlocks = ChestBlock.getSurroundingChestBlocks(entry.getChestBlock());
+                Optional<ChestBlock> matchingBlockInMap = possibleDoubleChestBlocks
+                        .stream()
+                        .filter(localChestPermissions::containsKey)
+                        .findFirst();
+
+                if (matchingBlockInMap.isPresent()) {
+                    localChestPermissions.put(entry.getChestBlock(), localChestPermissions.get(matchingBlockInMap.get()));
+                } else {
+                    localChestPermissions.put(entry.getChestBlock(), new ConcurrentHashMap<>(entry.getPermissionsMap()));
+                }
+            }
+
+            chestPermissions = localChestPermissions;
+            chestOwners = GSON.fromJson(compound.getString(CHEST_OWNERS_SAVE_KEY),
+                    new TypeToken<ConcurrentHashMap<ChestBlock, String>>() {}.getType());
+        }
+    }
+
+    @Override
+    public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
+        try (TimerMetric metric = TimerMetric.create("writeToNBT")) {
+            List<ChestBlockWithPermissionsMap> chestBlockWithPermissionsMaps =
+                    chestPermissions
+                            .entrySet()
+                            .stream()
+                            .map(e -> new ChestBlockWithPermissionsMap(e.getKey(), e.getValue()))
+                            .collect(Collectors.toList());
+
+            compound.setString(CHEST_PERMISSIONS_SAVE_KEY, GSON.toJson(chestBlockWithPermissionsMaps));
+            compound.setString(CHEST_OWNERS_SAVE_KEY, GSON.toJson(chestOwners));
+
+            return compound;
+        }
     }
 
     /**
@@ -216,9 +272,32 @@ public class ChestLockManager {
         return chestPermissions;
     }
 
+    static ChestLockManager getChestLockManager(final World world) {
+        MapStorage storage = world.getMapStorage();
+        ChestLockManager chestLockManager = (ChestLockManager) storage.getOrLoadData(ChestLockManager.class, CHEST_LOCK_MANAGER_SAVE_KEY);
+
+        if (chestLockManager == null) {
+            chestLockManager = new ChestLockManager();
+            storage.setData(CHEST_LOCK_MANAGER_SAVE_KEY, chestLockManager);
+        }
+
+        return chestLockManager;
+    }
+
+    public ChestLockManager(final String name) {
+        super(name);
+    }
+
     private ChestLockManager() {
+        super(CHEST_LOCK_MANAGER_SAVE_KEY);
         chestPermissions = Maps.newConcurrentMap();
         chestOwners = Maps.newConcurrentMap();
+    }
+
+    @Value
+    private static final class ChestBlockWithPermissionsMap {
+        private final ChestBlock chestBlock;
+        private final Map<String, ChestPermissions> permissionsMap;
     }
 
     private enum Operation {

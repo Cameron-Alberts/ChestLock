@@ -1,6 +1,7 @@
 package com.cameron.alberts.chestlock;
 
 import com.cameron.alberts.utils.BlockUtils;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import lombok.AllArgsConstructor;
 import lombok.Value;
@@ -10,6 +11,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
+import java.util.List;
 import java.util.Set;
 
 @Value
@@ -38,6 +40,17 @@ public class ChestBlock {
 
     public static boolean isChest(final Block block) {
         return CHEST_NAMES.contains(block.getUnlocalizedName());
+    }
+
+    public static List<ChestBlock> getSurroundingChestBlocks(final ChestBlock chestBlock) {
+        final String unlocalizedName = chestBlock.getUnlocalizedName();
+        final ChestPos chestPos = chestBlock.getChestPos();
+        return ImmutableList.of(
+                new ChestBlock(unlocalizedName, chestPos.north()),
+                new ChestBlock(unlocalizedName, chestPos.south()),
+                new ChestBlock(unlocalizedName, chestPos.west()),
+                new ChestBlock(unlocalizedName, chestPos.east())
+        );
     }
 
     @Nullable

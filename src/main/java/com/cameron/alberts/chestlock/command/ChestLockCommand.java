@@ -25,8 +25,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class ChestLockCommand implements ICommand {
-    private static final ChestLockManager manager = ChestLockManager.singleton();
-
     private static final int USERNAME_INDEX = 1;
     private static final String NAME = "chest";
     private static final String USAGE = "/chest <REGISTER:ADD_OWNER:ADD_MOD:REMOVE> <username>";
@@ -37,6 +35,12 @@ public class ChestLockCommand implements ICommand {
             "ADD_USER",
             "REMOVE"
     );
+
+    private final ChestLockManager manager;
+
+    public ChestLockCommand(final ChestLockManager chestLockManager) {
+        this.manager = chestLockManager;
+    }
 
     /**
      * Gets the name of the command.
